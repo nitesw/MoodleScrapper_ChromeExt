@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Moodle Scraper</title>
+  <style>
+    body { font: 13px/1.4 system-ui, sans-serif; width: 360px; margin: 0; padding: 12px; color: #222; background: #fff; }
+    h1 { font-size: 15px; margin: 0 0 8px; }
+    button { width: 100%; padding: 8px; font-size: 14px; cursor: pointer; border: 0; border-radius: 4px; background: #0f6cbf; color: #fff; }
+    fieldset { border: 1px solid #ddd; border-radius: 4px; margin: 0 0 10px; padding: 6px 10px 8px; }
+    legend { font-weight: 600; padding: 0 4px; }
+    fieldset label { display: block; margin: 3px 0; cursor: pointer; }
+    fieldset small, .note { color: #666; }
+    .note { font-size: 11px; margin-top: 4px; }
+    #cancel { margin-top: 6px; background: #fff; color: #a33; border: 1px solid #a33; }
+    button:disabled { background: #999; cursor: default; }
+    #hint { color: #a33; margin: 6px 0; }
+    #status { margin: 10px 0 4px; word-break: break-word; min-height: 1.4em; }
+    progress { width: 100%; }
+    #save { margin-top: 8px; padding: 6px 8px; background: #e8f1fb; border-radius: 4px; }
+    #warn { color: #b25c00; font-weight: 600; margin-top: 6px; }
+    #errors { margin-top: 8px; max-height: 220px; overflow: auto; font-size: 12px; }
+    #errors li { color: #a33; margin-bottom: 4px; word-break: break-word; }
+    #errors li.w { color: #b25c00; }
+    .hidden { display: none; }
+  </style>
+</head>
+<body>
+  <h1>Moodle Course Scraper</h1>
+  <fieldset id="media">
+    <legend>Media files</legend>
+    <label><input type="checkbox" id="optVideo"> Download video files <small>(.mp4, .webm…)</small></label>
+    <label><input type="checkbox" id="optAudio"> Download audio files <small>(.mp3, .m4a…)</small></label>
+    <div class="note">Unticked = not downloaded, only listed with their link in course.md.</div>
+  </fieldset>
+  <button id="go" disabled>Scrape this course</button>
+  <button id="cancel" class="hidden">Cancel</button>
+  <div id="hint" class="hidden"></div>
+  <div id="status"></div>
+  <progress id="bar" class="hidden" value="0" max="1"></progress>
+  <div id="save" class="hidden">👉 Switch to the Moodle tab and click <b>💾 Save ZIP…</b> (bottom-right) to choose the folder.</div>
+  <div id="warn" class="hidden"></div>
+  <ul id="errors"></ul>
+  <script src="popup.js"></script>
+</body>
+</html>

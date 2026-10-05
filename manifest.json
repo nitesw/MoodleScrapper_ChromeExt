@@ -1,0 +1,12 @@
+{
+  "manifest_version": 3,
+  "name": "Moodle Course Scraper (Vinci)",
+  "version": "0.1.0",
+  "description": "Scrape the open moodle.vinci.be course into a ZIP (course.md + files). GET requests only.",
+  "permissions": ["activeTab", "scripting"],
+  "host_permissions": ["https://moodle.vinci.be/*"],
+  "action": {
+    "default_title": "Scrape this Moodle course",
+    "default_popup": "popup.html"
+  }
+}
