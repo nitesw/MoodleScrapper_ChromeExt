@@ -49,11 +49,22 @@ describe('popup', () => {
   let p;
   afterEach(() => p && p.close());
 
-  test('media checkboxes default to unticked', async () => {
+  test('defaults: media unticked, Office → Markdown ticked', async () => {
     p = openPopup();
     await tick();
     expect(p.$('optVideo').checked).toBe(false);
     expect(p.$('optAudio').checked).toBe(false);
+    for (const id of ['optMdSlides', 'optMdDocs', 'optMdSheets', 'optMdPictures']) expect(p.$(id).checked).toBe(true);
+  });
+
+  test('unticking Slides is remembered and sent with start', async () => {
+    p = openPopup();
+    await tick();
+    p.$('optMdSlides').click();
+    p.$('go').click();
+    await tick();
+    expect(p.sent.at(-1).options.mdSlides).toBe(false);
+    expect(JSON.parse(p.store.moodleScraperOptions).mdSlides).toBe(false);
   });
 
   test('checkbox choices are remembered across popup openings', async () => {
@@ -61,7 +72,9 @@ describe('popup', () => {
     await tick();
     p.$('optVideo').click();
     const store = p.store;
-    expect(JSON.parse(store.moodleScraperOptions)).toEqual({ downloadVideo: true, downloadAudio: false });
+    expect(JSON.parse(store.moodleScraperOptions)).toEqual({
+      downloadVideo: true, downloadAudio: false, mdSlides: true, mdDocs: true, mdSheets: true, mdPictures: true,
+    });
     p.close();
     p = openPopup({ store });
     await tick();
@@ -74,8 +87,11 @@ describe('popup', () => {
     await tick();
     p.$('go').click();
     await tick();
-    expect(p.injected[0].files).toEqual(['lib/jszip.min.js', 'content.js']);
-    expect(p.sent.at(-1)).toEqual({ cmd: 'start', options: { downloadVideo: false, downloadAudio: true } });
+    expect(p.injected[0].files).toEqual(['lib/jszip.min.js', 'lib/office2md.js', 'content.js']);
+    expect(p.sent.at(-1)).toEqual({
+      cmd: 'start',
+      options: { downloadVideo: false, downloadAudio: true, mdSlides: true, mdDocs: true, mdSheets: true, mdPictures: true },
+    });
   });
 
   test('Cancel is shown only while running, and sends cancel', async () => {

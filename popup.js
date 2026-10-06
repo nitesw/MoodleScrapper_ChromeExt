@@ -6,17 +6,27 @@ let tabId = null;
 
 // Media download options, remembered in the extension's own localStorage (no extra permission).
 const OPTS_KEY = 'moodleScraperOptions';
+// option name → checkbox id
+const OPTION_BOXES = {
+  downloadVideo: 'optVideo', downloadAudio: 'optAudio',
+  mdSlides: 'optMdSlides', mdDocs: 'optMdDocs', mdSheets: 'optMdSheets', mdPictures: 'optMdPictures',
+};
+const DEFAULTS = { downloadVideo: false, downloadAudio: false, mdSlides: true, mdDocs: true, mdSheets: true, mdPictures: true };
 function loadOptions() {
-  try { return { downloadVideo: false, downloadAudio: false, ...JSON.parse(localStorage.getItem(OPTS_KEY) || '{}') }; }
-  catch (_) { return { downloadVideo: false, downloadAudio: false }; }
+  try { return { ...DEFAULTS, ...JSON.parse(localStorage.getItem(OPTS_KEY) || '{}') }; }
+  catch (_) { return { ...DEFAULTS }; }
 }
-function readOptions() { return { downloadVideo: $('optVideo').checked, downloadAudio: $('optAudio').checked }; }
+function readOptions() {
+  const o = {};
+  for (const [k, id] of Object.entries(OPTION_BOXES)) o[k] = $(id).checked;
+  return o;
+}
 function saveOptions() { try { localStorage.setItem(OPTS_KEY, JSON.stringify(readOptions())); } catch (_) { /* ignore */ } }
 const initial = loadOptions();
-$('optVideo').checked = initial.downloadVideo;
-$('optAudio').checked = initial.downloadAudio;
-$('optVideo').addEventListener('change', saveOptions);
-$('optAudio').addEventListener('change', saveOptions);
+for (const [k, id] of Object.entries(OPTION_BOXES)) {
+  $(id).checked = !!initial[k];
+  $(id).addEventListener('change', saveOptions);
+}
 
 function render(s) {
   if (!s) return;
@@ -30,7 +40,7 @@ function render(s) {
     bar.value = s.done || 0;
   }
   $('save').classList.toggle('hidden', !s.readyToSave);
-  $('optVideo').disabled = $('optAudio').disabled = !!s.running; // options apply per run
+  for (const id of Object.values(OPTION_BOXES)) $(id).disabled = !!s.running; // options apply per run
   const cancel = $('cancel');
   cancel.classList.toggle('hidden', !s.running);
   cancel.disabled = !!s.cancelled;
@@ -71,7 +81,7 @@ async function init() {
 $('go').addEventListener('click', async () => {
   $('go').disabled = true;
   try {
-    await chrome.scripting.executeScript({ target: { tabId }, files: ['lib/jszip.min.js', 'content.js'] });
+    await chrome.scripting.executeScript({ target: { tabId }, files: ['lib/jszip.min.js', 'lib/office2md.js', 'content.js'] });
     const s = await chrome.tabs.sendMessage(tabId, { cmd: 'start', options: readOptions() });
     render(s);
   } catch (e) {

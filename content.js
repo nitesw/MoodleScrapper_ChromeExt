@@ -91,16 +91,23 @@
   const FORUM_MAX = 10;
   // Video/audio files (e.g. .mp4 in a folder) are listed with their link instead of downloaded,
   // unless the user ticks "Download video files" / "Download audio files" in the popup.
-  const DEFAULT_OPTIONS = { downloadVideo: false, downloadAudio: false };
+  // Office files → Markdown (lib/office2md.js): the original is ALWAYS kept, a "<file>.md" + "<file>_media/"
+  // is added next to it for each enabled kind. Toggled by the popup checkboxes.
+  const DEFAULT_OPTIONS = {
+    downloadVideo: false, downloadAudio: false,
+    mdSlides: true, mdDocs: true, mdSheets: true, mdPictures: true,
+  };
+  const MD_OPTION = { slides: 'mdSlides', docs: 'mdDocs', sheets: 'mdSheets' };
+  const MAX_CONVERT_BYTES = 80 * 1024 * 1024;
   let options = { ...DEFAULT_OPTIONS };
   const LOG = '[MoodleScraper]';
 
   /* ========================================================================= state */
-  let state, zip, fileCount, fileCache, dirNames, activities, sectionsList, courseCmids, aborted, abortReason, guardLogged, totalBytes;
+  let state, zip, fileCount, convertedCount, fileCache, dirNames, activities, sectionsList, courseCmids, aborted, abortReason, guardLogged, totalBytes;
 
   function reset() {
     state = { running: false, finished: false, done: 0, total: 0, message: '', errors: [], warnings: [], sizeWarning: '' };
-    zip = null; fileCount = 0; fileCache = new Map(); dirNames = new Map(); activities = []; sectionsList = [];
+    zip = null; fileCount = 0; convertedCount = 0; fileCache = new Map(); dirNames = new Map(); activities = []; sectionsList = [];
     courseCmids = new Set(); aborted = false; abortReason = ''; guardLogged = new Set(); totalBytes = 0;
   }
   reset();
@@ -367,7 +374,8 @@
         fileCount++;
         const k2 = normUrl(r.url);
         if (!fileCache.has(k2)) fileCache.set(k2, p);
-        return { name, path };
+        const mdPath = await toMarkdown(dir, name, r.blob);
+        return mdPath ? { name, path, mdPath } : { name, path };
       } catch (e) {
         if (e instanceof AbortRun) throw e;
         fail(`Download "${guess}"`, e, url);
@@ -379,6 +387,42 @@
     })();
     fileCache.set(key, p);
     return p;
+  }
+
+  // Office file → "<name>.md" (+ "<name>_media/") next to the original. Never throws for a bad file:
+  // the original is already saved, so a failed conversion is only a warning.
+  async function toMarkdown(dir, name, blob) {
+    const O2M = window.Office2Md;
+    const k = O2M && O2M.kindOf(name);
+    if (!k || !options[MD_OPTION[k.kind]]) return null;
+    if (k.format === 'legacy') {
+      warn(`"${name}": old .${k.ext} format can't be converted to Markdown in the browser — original kept (re-save it as .${k.modern} to convert).`);
+      return null;
+    }
+    if (blob.size > MAX_CONVERT_BYTES) {
+      warn(`"${name}" is too large to convert to Markdown (${(blob.size / 1048576).toFixed(0)} MB) — original kept.`);
+      return null;
+    }
+    state.total++;
+    setMsg(`Converting ${state.done + 1}/${state.total}: ${name} → Markdown`);
+    try {
+      const mdName = uniqueName(dir, `${name}.md`);
+      const mediaDir = sanitize(`${name}_media`, 120);
+      const out = await O2M.convert(blob, name, { pictures: options.mdPictures, mediaDir, shouldStop: () => aborted });
+      if (aborted) throw new AbortRun(abortReason);
+      for (const img of out.images) zip.file(`${dir}/${mediaDir}/${img.name}`, img.data, { binary: true, compression: 'STORE' });
+      zip.file(`${dir}/${mdName}`, out.md, { compression: 'DEFLATE' });
+      for (const w of out.warnings) warn(`"${name}": ${w}`);
+      convertedCount++;
+      return `${dir}/${mdName}`;
+    } catch (e) {
+      if (aborted || e instanceof AbortRun) throw new AbortRun(abortReason);
+      warn(`"${name}" could not be converted to Markdown (${e.message}) — original kept.`);
+      return null;
+    } finally {
+      state.done++;
+      emit();
+    }
   }
 
   // Converts an HTML fragment to Markdown, first downloading any pluginfile.php
@@ -795,7 +839,9 @@
   }
   const fileKey = (f) => f.path || f.url;
   function pushFile(act, f) { if (f && !act.files.some((x) => fileKey(x) === fileKey(f))) act.files.push(f); }
-  const fileLink = (f) => (f.media ? `${f.media === 'audio' ? '🔊' : '🎥'} ${f.name} (not downloaded): ${f.url}` : `[${f.name}](${mdLink(f.path)})`);
+  const fileLink = (f) => (f.media
+    ? `${f.media === 'audio' ? '🔊' : '🎥'} ${f.name} (not downloaded): ${f.url}`
+    : `[${f.name}](${mdLink(f.path)})${f.mdPath ? ` · 📝 [as Markdown](${mdLink(f.mdPath)})` : ''}`);
 
   const HANDLERS = {
     async resource(act) {
@@ -1073,13 +1119,36 @@
     }
   }
 
+  // A few lines for the AI that will read this export: only what it could otherwise get wrong.
+  function aiNote(course, now) {
+    const day = now.toLocaleDateString('fr-BE');
+    const lines = [
+      `> **Note for the AI reading this:** export of the Moodle course "${course.title}" made on ${day}. Course content is mostly in French.`,
+      '> - This file is the whole course in Moodle order; every downloaded file is in `files/…` and linked from its activity.',
+    ];
+    if (convertedCount) {
+      lines.push('> - Office files exist twice: read the `.pptx.md` / `.docx.md` / `.xlsx.md` version first (all text, speaker notes, formulas); '
+        + 'check the original or its `_media/` pictures for diagrams, equations or layout. PDFs are not converted — read them directly.');
+    }
+    const skippedMedia = activities.some((a) => a.files.some((f) => f.media));
+    const missing = ['quiz questions (quizzes were never opened)'];
+    if (skippedMedia) missing.push('videos/audio marked "(not downloaded)"');
+    missing.push('external websites');
+    if (state.errors.length || state.warnings.length) missing.push('anything listed under "Scrape errors"');
+    lines.push(`> - Not in this export, so don't guess it: ${missing.join(', ')}.`);
+    lines.push(`> - Deadline statuses below were computed on ${day}; compare with today's date.`);
+    return lines.join('\n');
+  }
+
   function buildMarkdown(course, tree, now) {
     const out = [`# ${course.title}`, [
       `- URL: ${course.url}`,
       `- Scraped: ${now.toISOString()} (local: ${now.toLocaleString('fr-BE')})`,
       `- Activities: ${activities.length} · Files: ${fileCount}`,
       `- Media files downloaded: video ${options.downloadVideo ? 'yes' : 'no (links listed)'} · audio ${options.downloadAudio ? 'yes' : 'no (links listed)'}`,
+      `- Office files → Markdown (originals kept): slides ${options.mdSlides ? 'yes' : 'no'} · documents ${options.mdDocs ? 'yes' : 'no'} · spreadsheets ${options.mdSheets ? 'yes' : 'no'} · pictures ${options.mdPictures ? 'yes' : 'no'} — ${convertedCount} file(s) converted`,
     ].join('\n')];
+    out.push(aiNote(course, now));
 
     const DEADLINE_TYPES = new Set(['quiz', 'assign', 'lesson']);
     const rows = activities.filter((a) => DEADLINE_TYPES.has(a.type) || a.meta.due || a.meta.closes || a.meta.cutoff);

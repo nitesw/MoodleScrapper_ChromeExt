@@ -33,6 +33,14 @@
     <label><input type="checkbox" id="optAudio"> Download audio files <small>(.mp3, .m4a…)</small></label>
     <div class="note">Unticked = not downloaded, only listed with their link in course.md.</div>
   </fieldset>
+  <fieldset id="office">
+    <legend>Office files → Markdown for AI</legend>
+    <label><input type="checkbox" id="optMdSlides" checked> Slides <small>(.pptx, .odp)</small></label>
+    <label><input type="checkbox" id="optMdDocs" checked> Documents <small>(.docx, .odt)</small></label>
+    <label><input type="checkbox" id="optMdSheets" checked> Spreadsheets <small>(.xlsx, .ods)</small></label>
+    <label><input type="checkbox" id="optMdPictures" checked> Include pictures <small>(images, equations)</small></label>
+    <div class="note">Adds “file.pptx.md” next to each file. The original is always kept.</div>
+  </fieldset>
   <button id="go" disabled>Scrape this course</button>
   <button id="cancel" class="hidden">Cancel</button>
   <div id="hint" class="hidden"></div>

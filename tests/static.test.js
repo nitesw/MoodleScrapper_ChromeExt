@@ -20,9 +20,14 @@ describe('package', () => {
     expect(existsSync(join(ROOT, m.action.default_popup))).toBe(true);
   });
 
-  test('JSZip is bundled locally and injected before content.js', () => {
+  test('JSZip and the Office converter are bundled locally and injected before content.js', () => {
     expect(read('lib/jszip.min.js')).toContain('JSZip v3.10.1');
-    expect(read('popup.js')).toContain("files: ['lib/jszip.min.js', 'content.js']");
+    expect(read('popup.js')).toContain("files: ['lib/jszip.min.js', 'lib/office2md.js', 'content.js']");
+    expect(() => transpiler.transformSync(read('lib/office2md.js'))).not.toThrow();
+  });
+
+  test('popup has the Office → Markdown checkboxes', () => {
+    for (const id of ['optMdSlides', 'optMdDocs', 'optMdSheets', 'optMdPictures']) expect(read('popup.html')).toContain(`id="${id}"`);
   });
 
   test('popup has a Cancel button wired to the content script', () => {

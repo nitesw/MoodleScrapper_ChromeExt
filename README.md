@@ -15,6 +15,7 @@ After editing any file, click the ↻ reload icon on the extension card **and re
 ## Use
 1. Log in to https://moodle.vinci.be and open a course: `course/view.php?id=…` or `course/section.php?id=…`. On a section page, the whole course is still scraped.
 2. Click the extension icon. Under **Media files**, tick **Download video files** and/or **Download audio files** if you want them in the ZIP. Both are off by default; unticked media are only listed with their link in `course.md`. Your choice is remembered.
+   Under **Office files → Markdown for AI**, choose which kinds get a Markdown version (all on by default). The original file is always kept.
 3. Click **Scrape this course**.
 4. The progress counter covers activities and files, and grows as new files are found. You can close the popup; the scrape keeps running in the tab. Reopen the popup to see progress again.
    - To stop, click **Cancel**. In-flight requests are aborted, nothing else is fetched, and no ZIP is produced. You can start again right away.
@@ -35,6 +36,25 @@ After editing any file, click the ↻ reload icon on the extension card **and re
 - A **Deadlines & evaluations** table covering every quiz, assignment and lesson, plus anything else with a due date. Columns: opens, due/closes, cut-off, attempts allowed, grade to pass, completion, and status (open / closed / upcoming / overdue / ?) relative to the scrape date. Rows are sorted by deadline.
 - The section tree in order. Sections are `##`, nested subsections are `###` and deeper, and each activity is one level below its section. Each activity lists its type, link, breadcrumb, completion ("To do" / "Done" plus the raw text), dates, restrictions, description, content, and files as relative links into `files/`.
 - A **Scrape errors** list.
+
+## Office files → Markdown (for AI)
+Every downloaded `.pptx`, `.docx`, `.xlsx` (and `.odp`, `.odt`, `.ods`) is **kept as is**, and a Markdown version is added next to it:
+```
+files/…/Slides01.pptx            original, unchanged
+files/…/Slides01.pptx.md         text version
+files/…/Slides01.pptx_media/     its pictures (images, equation renderings)
+```
+`course.md` links both: `[Slides01.pptx](…) · 📝 [as Markdown](…)`. The conversion runs inside the browser (`lib/office2md.js`, using the bundled JSZip). Nothing is installed and nothing leaves your computer.
+
+| Format | What the `.md` contains |
+| --- | --- |
+| Slides | `## Slide N — title` in presentation order, real bullets and numbering, code (monospace text) as code blocks, tables, pictures, equations as text plus their picture, chart titles, SmartArt text, speaker notes (🗒️), hidden slides marked. Embedded narration/video becomes a one-line note. |
+| Documents | headings (including French "Titre 1" styles), bold/italic, bulleted and numbered lists, links, tables, pictures, equations as text, footnotes |
+| Spreadsheets | one table per sheet with row numbers and column letters, **formulas shown next to values** (shared formulas rebuilt), hidden sheets marked, capped at 300 rows × 30 columns |
+
+Popup checkboxes: Slides / Documents / Spreadsheets / Include pictures. Old binary `.ppt/.doc/.xls` can't be read in the browser; they're kept with a warning ("re-save as .pptx").
+
+`course.md` starts with a short **note for the AI** reading the export. It says the content is in French, to read the `.md` versions first and check originals for diagrams or equations, what is *not* in the export (quiz questions, skipped media, external sites, failed items), and that deadline statuses date from the scrape.
 
 ## What each activity type captures
 | Type | What is fetched (always GET) | What ends up in the ZIP |
@@ -65,6 +85,12 @@ After editing any file, click the ↻ reload icon on the extension card **and re
 - **Completion side effect.** Opening an activity page (page, quiz view, forum…) is a normal "view" for Moodle. Activities whose completion condition is just "view" will turn **Done** afterwards. `course.md` records completion as it was **before** the scrape, because it's read from the course page first.
 - **Lesson PDF export.** The export plugin's URL is a guess (`a[href*="lessonexport"]`). If that link carries `sesskey=`, the guard refuses it. The lesson then falls back to its menu pages, and the refusal is listed as a warning.
 - **Not captured:** SCORM, H5P, LTI, interactive content, and quiz questions (never opened, by design).
+- **Office → Markdown limits:**
+  - Layout isn't reproduced.
+  - Shapes come out in their stacking order, which is usually reading order.
+  - MathType/Equation 3.0 objects only have an EMF/WMF preview, which may not display; those are flagged ⚠️.
+  - Charts give their title only. SmartArt gives its text only.
+  - Files over 80 MB are not converted.
 - **Video and audio files** are controlled by the two popup checkboxes. This covers `.mp4`, `.mp3`, … files and any server response of type `video/*` / `audio/*`, whether in folders, resources, or embedded players in pages.
   - Unticked: a file is listed as `🎥 name (not downloaded): url` (or 🔊 for audio) instead of being put in the ZIP. Files known by extension are never requested; for the others the transfer is cancelled as soon as the type is known.
   - Ticked: the file goes into the ZIP, and embedded players link to the local copy.
@@ -134,6 +160,7 @@ MOODLE_TEST_VERBOSE=1 bun test   # show the scraper's console output
   - the video/audio options (neither, video only, audio only, both);
   - portable paths.
 - **`tests/popup.test.js`** drives the real popup: remembered checkboxes, the options sent with start, Cancel, restored progress.
+- **`tests/office2md.test.js`** tests the Office converter on generated PPTX/DOCX/XLSX/ODP/ODT files (`tests/office.fixtures.js`): slide order, bullets vs plain text, code blocks, equations, notes, narration, French Word styles, lists, Excel formulas including shared ones, ODF, and damaged or legacy files.
 - **`tests/static.test.js`** checks the manifest, the bundled JSZip, and that there's a single GET-only `fetch`.
 - **`tests/samples.test.js`** runs `SELECTORS` against your real pages. Save `copy(document.querySelector('#region-main').outerHTML)` from a course page as `sample-course.html` in the project root and the test runs; otherwise it is skipped.
 
@@ -143,3 +170,4 @@ MOODLE_TEST_VERBOSE=1 bun test   # show the scraper's console output
 - `content.js`: all the scraping and the Save ZIP button. `SELECTORS` and `LABELS` are at the top.
 - `package.json`, `tests/`: Bun test suite (dev only, not part of the extension).
 - `lib/jszip.min.js`: JSZip 3.10.1 (MIT), bundled locally.
+- `lib/office2md.js`: in-browser Office → Markdown converter.

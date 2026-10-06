@@ -7,6 +7,8 @@ export const ROOT = join(import.meta.dir, '..');
 export const O = 'https://moodle.vinci.be';
 export const FORBIDDEN = /startattempt|attempt\.php|processattempt|continue\.php|sesskey=|logout\.php/i;
 const SRC = readFileSync(join(ROOT, 'content.js'), 'utf8');
+const JSZIP_SRC = readFileSync(join(ROOT, 'lib/jszip.min.js'), 'utf8');
+const O2M_SRC = readFileSync(join(ROOT, 'lib/office2md.js'), 'utf8');
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 /**
@@ -84,7 +86,14 @@ export function createEnv({ html = '<html><body></body></html>', url = `${O}/cou
     };
   }
 
+  // Same injection order as popup.js: real JSZip, then the Office converter, then content.js.
+  // The OUTPUT zip is replaced by a recorder; reading Office files still uses the real JSZip.
+  w.setImmediate = (fn, ...args) => setTimeout(() => fn(...args), 0); // jsdom lacks it; JSZip needs it to stream
+  w.eval(JSZIP_SRC);
+  const RealJSZip = w.JSZip;
+  w.eval(O2M_SRC);
   w.JSZip = class {
+    static loadAsync(...a) { return RealJSZip.loadAsync(...a); }
     file(path, data) { zipFiles[path] = data; }
     async generateAsync(_o, cb) { if (cb) cb({ percent: 100 }); return new w.Blob(['zip']); }
   };

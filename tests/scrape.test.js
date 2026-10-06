@@ -2,6 +2,7 @@
 import { describe, test, expect, beforeAll, afterAll, afterEach } from 'bun:test';
 import { createEnv, O, FORBIDDEN } from './harness.js';
 import { mathCourse, coursePage, section, delegated, cm, html, file, activityPage } from './fixtures.js';
+import { makePptx, makeDocx, pp, wd, rel, PNG } from './office.fixtures.js';
 
 describe('full course scrape (Math 1–style course)', () => {
   let env, res;
@@ -11,6 +12,15 @@ describe('full course scrape (Math 1–style course)', () => {
     res = await env.scrape();
   });
   afterAll(() => env.close());
+
+  test('starts with a short note for the AI (no conversion line when nothing was converted)', () => {
+    const note = res.md.split('\n## ')[0];
+    expect(note).toContain('> **Note for the AI reading this:** export of the Moodle course "BINV1010-1 Algorithmique"');
+    expect(note).toContain("don't guess it: quiz questions");
+    expect(note).toContain('Deadline statuses below were computed on');
+    expect(note).not.toContain('Office files exist twice');
+    expect(note.split('\n').filter((l) => l.startsWith('>')).length).toBeLessThanOrEqual(5);
+  });
 
   test('finishes without errors and offers the ZIP for saving', () => {
     expect(res.state.errors).toEqual([]);
@@ -502,7 +512,95 @@ describe('media download options (popup checkboxes)', () => {
     env = createEnv({ html: page, pages });
     await env.scrape(15000, { downloadVideo: true, downloadAudio: true });
     const res = await env.scrape(15000); // popup with nothing ticked
-    expect(res.state.options).toEqual({ downloadVideo: false, downloadAudio: false });
+    expect(res.state.options).toMatchObject({ downloadVideo: false, downloadAudio: false });
     expect(res.md).toContain('🎥 seance.mp4 (not downloaded)');
+  });
+});
+
+describe('Office files → Markdown (originals kept)', () => {
+  let env;
+  afterEach(() => env && env.close());
+
+  const PPTX_TYPE = 'application/vnd.openxmlformats-officedocument.presentationml.presentation';
+  const DOCX_TYPE = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+  const officeCourse = async () => {
+    const pptx = await makePptx([
+      { file: 'slide1.xml', shapes: pp.title('Algèbre de Boole') + pp.body(['a + 0 = a']) + pp.pic('rIdI', 'loi'), rels: [rel('rIdI', 'image', '../media/image1.png')] },
+      { file: 'slide2.xml', shapes: pp.title('Exercices') },
+    ], { 'image1.png': PNG });
+    const docx = await makeDocx(wd.p(wd.r('Consignes'), { style: 'Titre1' }) + wd.p(wd.r('Faire les exercices 1 à 5')));
+    const page = coursePage(section(10, 0, 'Théorie', cm(2, 'resource', 'Slides Boole') + cm(7, 'folder', 'Fiches')));
+    const pages = {
+      '/mod/resource/view.php?id=2&redirect=1': { type: PPTX_TYPE, body: pptx, redirect: '/pluginfile.php/1/mod_resource/content/1/Boole.pptx', cd: 'attachment; filename="Boole.pptx"' },
+      '/mod/folder/view.php?id=7': html(activityPage({
+        body: `<div class="foldertree">
+          <a href="${O}/pluginfile.php/2/mod_folder/content/0/Fiche%201.docx?forcedownload=1">Fiche 1.docx</a>
+          <a href="${O}/pluginfile.php/2/mod_folder/content/0/vieux.ppt?forcedownload=1">vieux.ppt</a>
+          <a href="${O}/pluginfile.php/2/mod_folder/content/0/casse.pptx?forcedownload=1">casse.pptx</a></div>`,
+      })),
+      '/pluginfile.php/2/mod_folder/content/0/Fiche%201.docx?forcedownload=1': { type: DOCX_TYPE, body: docx },
+      '/pluginfile.php/2/mod_folder/content/0/vieux.ppt?forcedownload=1': file('LEGACY', 'application/vnd.ms-powerpoint'),
+      '/pluginfile.php/2/mod_folder/content/0/casse.pptx?forcedownload=1': { type: PPTX_TYPE, body: 'not a zip' },
+    };
+    return { page, pages };
+  };
+  const run = async (options) => {
+    const { page, pages } = await officeCourse();
+    env = createEnv({ html: page, pages });
+    const res = await env.scrape(15000, options);
+    return { res, paths: Object.keys(env.zipFiles) };
+  };
+
+  test('original + .md + pictures side by side; course.md links both', async () => {
+    const { res, paths } = await run();
+    expect(res.md.split('\n## ')[0]).toContain('> - Office files exist twice: read the `.pptx.md`');
+    expect(paths).toContain('files/Théorie/Slides Boole/Boole.pptx');
+    expect(paths).toContain('files/Théorie/Slides Boole/Boole.pptx.md');
+    expect(paths).toContain('files/Théorie/Slides Boole/Boole.pptx_media/image1.png');
+    expect(paths).toContain('files/Théorie/Fiches/Fiche 1.docx');
+    expect(paths).toContain('files/Théorie/Fiches/Fiche 1.docx.md');
+
+    const md = String(env.zipFiles['files/Théorie/Slides Boole/Boole.pptx.md']);
+    expect(md).toContain('## Slide 1 — Algèbre de Boole');
+    expect(md).toContain('- a + 0 = a');
+    expect(md).toContain('![loi](Boole.pptx_media/image1.png)'); // relative to the .md file
+    expect(String(env.zipFiles['files/Théorie/Fiches/Fiche 1.docx.md'])).toContain('## Consignes');
+
+    expect(res.md).toContain('[Boole.pptx](<files/Théorie/Slides Boole/Boole.pptx>) · 📝 [as Markdown](<files/Théorie/Slides Boole/Boole.pptx.md>)');
+    expect(res.md).toContain('Office files → Markdown (originals kept): slides yes · documents yes · spreadsheets yes · pictures yes — 2 file(s) converted');
+  });
+
+  test('old .ppt and broken files: original kept, warning, no .md, no error', async () => {
+    const { res, paths } = await run();
+    expect(paths).toContain('files/Théorie/Fiches/vieux.ppt');
+    expect(paths).toContain('files/Théorie/Fiches/casse.pptx');
+    expect(paths).not.toContain('files/Théorie/Fiches/vieux.ppt.md');
+    expect(paths).not.toContain('files/Théorie/Fiches/casse.pptx.md');
+    expect(res.state.errors).toEqual([]);
+    expect(res.state.warnings.some((w) => w.includes('"vieux.ppt"') && w.includes('re-save it as .pptx'))).toBe(true);
+    expect(res.state.warnings.some((w) => w.includes('"casse.pptx" could not be converted') && w.includes('original kept'))).toBe(true);
+  });
+
+  test('turning a kind off keeps only the original', async () => {
+    const { res, paths } = await run({ mdSlides: false });
+    expect(paths).toContain('files/Théorie/Slides Boole/Boole.pptx');
+    expect(paths.some((p) => p.includes('Boole.pptx.md') || p.includes('Boole.pptx_media'))).toBe(false);
+    expect(paths).toContain('files/Théorie/Fiches/Fiche 1.docx.md'); // documents still on
+    expect(res.state.warnings.some((w) => w.includes('vieux.ppt'))).toBe(false); // slides off → not even tried
+    expect(res.md).toContain('slides no · documents yes');
+  });
+
+  test('pictures can be turned off', async () => {
+    const { paths } = await run({ mdPictures: false });
+    expect(paths).toContain('files/Théorie/Slides Boole/Boole.pptx.md');
+    expect(paths.some((p) => p.includes('_media/'))).toBe(false);
+  });
+
+  test('converted files keep portable paths', async () => {
+    const { paths } = await run();
+    for (const path of paths) for (const part of path.split('/')) {
+      expect(part).not.toMatch(/[<>:"\\|?*]/);
+      expect(part).not.toMatch(/[. ]$/);
+    }
   });
 });
