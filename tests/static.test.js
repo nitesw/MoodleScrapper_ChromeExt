@@ -8,7 +8,7 @@ const read = (f) => readFileSync(join(ROOT, f), 'utf8');
 const transpiler = new Bun.Transpiler({ loader: 'js' });
 
 describe('package', () => {
-  test.each(['content.js', 'popup.js'])('%s parses', (f) => {
+  test.each(['content.js', 'popup.js', 'schedule.js'])('%s parses', (f) => {
     expect(() => transpiler.transformSync(read(f))).not.toThrow();
   });
 
@@ -16,13 +16,14 @@ describe('package', () => {
     const m = JSON.parse(read('manifest.json'));
     expect(m.manifest_version).toBe(3);
     expect(m.permissions.sort()).toEqual(['activeTab', 'scripting']);
-    expect(m.host_permissions).toEqual(['https://moodle.vinci.be/*']);
+    expect(m.host_permissions).toEqual(['https://moodle.vinci.be/*', 'https://horaire.vinci.be/*']);
     expect(existsSync(join(ROOT, m.action.default_popup))).toBe(true);
   });
 
   test('JSZip and the Office converter are bundled locally and injected before content.js', () => {
     expect(read('lib/jszip.min.js')).toContain('JSZip v3.10.1');
-    expect(read('popup.js')).toContain("files: ['lib/jszip.min.js', 'lib/office2md.js', 'content.js']");
+    expect(read('popup.js')).toContain("const MOODLE_FILES = ['lib/jszip.min.js', 'lib/office2md.js', 'content.js'];");
+    expect(read('popup.js')).toContain("const SCHEDULE_FILES = ['lib/jszip.min.js', 'schedule.js'];");
     expect(() => transpiler.transformSync(read('lib/office2md.js'))).not.toThrow();
   });
 
@@ -56,6 +57,22 @@ describe('package', () => {
     expect(src).toMatch(/fetch\(url, \{ method: 'GET', credentials: 'include'/);
     expect(src).not.toMatch(/method:\s*['"]POST/i);
     expect(src).not.toMatch(/\.submit\(\)/);
+  });
+
+  test('schedule.js has exactly one fetch(): a POST restricted to the two CELCAT read endpoints', () => {
+    const src = read('schedule.js');
+    const code = src.replace(/\/\/.*$/gm, '').replace(/\/\*[\s\S]*?\*\//g, '');
+    expect(code.match(/\bfetch\(/g) || []).toHaveLength(1);
+    expect(src).toContain("const ENDPOINTS = { calendar: '/Home/GetCalendarData', event: '/Home/GetSideBarEvent' };");
+    expect(src).toMatch(/if \(!Object\.values\(ENDPOINTS\)\.includes\(path\)\) throw/);
+    expect(src).toMatch(/fetch\(location\.origin \+ path, \{\s*method: 'POST'/);
+    expect(src).not.toMatch(/\.submit\(\)/);
+    expect(src).not.toMatch(/XMLHttpRequest\(/);
+  });
+
+  test('popup has the schedule range and format controls', () => {
+    const html = read('popup.html');
+    for (const id of ['scheduleUI', 'dateFrom', 'dateTo', 'fmtIcs', 'fmtGcsv', 'fmtMd', 'fmtJson', 'fmtCsv']) expect(html).toContain(`id="${id}"`);
   });
 
   test('all selectors live in the SELECTORS object at the top', () => {

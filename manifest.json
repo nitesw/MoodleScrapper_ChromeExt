@@ -1,12 +1,12 @@
 {
   "manifest_version": 3,
   "name": "Moodle Course Scraper (Vinci)",
-  "version": "0.1.0",
-  "description": "Scrape the open moodle.vinci.be course into a ZIP (course.md + files). GET requests only.",
+  "version": "0.2.0",
+  "description": "Scrape the open moodle.vinci.be course into a ZIP (course.md + files), and export your horaire.vinci.be schedule to .ics/CSV/Markdown/JSON.",
   "permissions": ["activeTab", "scripting"],
-  "host_permissions": ["https://moodle.vinci.be/*"],
+  "host_permissions": ["https://moodle.vinci.be/*", "https://horaire.vinci.be/*"],
   "action": {
-    "default_title": "Scrape this Moodle course",
+    "default_title": "Scrape this Moodle course / export the schedule",
     "default_popup": "popup.html"
   }
 }

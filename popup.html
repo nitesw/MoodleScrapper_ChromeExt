@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <title>Moodle Scraper</title>
+  <title>Vinci Scraper</title>
   <style>
     body { font: 13px/1.4 system-ui, sans-serif; width: 360px; margin: 0; padding: 12px; color: #222; background: #fff; }
     h1 { font-size: 15px; margin: 0 0 8px; }
@@ -22,11 +22,15 @@
     #errors { margin-top: 8px; max-height: 220px; overflow: auto; font-size: 12px; }
     #errors li { color: #a33; margin-bottom: 4px; word-break: break-word; }
     #errors li.w { color: #b25c00; }
+    #selInfo { margin: 0 0 8px; padding: 6px 8px; background: #f3f7fa; border-radius: 4px; }
+    .dates { display: flex; gap: 6px; margin: 2px 0 0 20px; }
+    .dates input { flex: 1; min-width: 0; font: inherit; }
     .hidden { display: none; }
   </style>
 </head>
 <body>
-  <h1>Moodle Course Scraper</h1>
+  <h1 id="title">Moodle Course Scraper</h1>
+  <section id="moodleUI">
   <fieldset id="media">
     <legend>Media files</legend>
     <label><input type="checkbox" id="optVideo"> Download video files <small>(.mp4, .webm…)</small></label>
@@ -41,12 +45,34 @@
     <label><input type="checkbox" id="optMdPictures" checked> Include pictures <small>(images, equations)</small></label>
     <div class="note">Adds “file.pptx.md” next to each file. The original is always kept.</div>
   </fieldset>
+  </section>
+  <section id="scheduleUI" class="hidden">
+    <div id="selInfo"></div>
+    <fieldset id="range">
+      <legend>Date range</legend>
+      <label><input type="radio" name="range" value="view"> Current view <small id="viewRange"></small></label>
+      <label><input type="radio" name="range" value="week"> This week</label>
+      <label><input type="radio" name="range" value="month"> This month</label>
+      <label><input type="radio" name="range" value="year"> Whole academic year <small id="yearRange"></small></label>
+      <label><input type="radio" name="range" value="custom"> Custom</label>
+      <div class="dates"><input type="date" id="dateFrom" aria-label="From"><input type="date" id="dateTo" aria-label="Until"></div>
+    </fieldset>
+    <fieldset id="formats">
+      <legend>Export formats</legend>
+      <label><input type="checkbox" id="fmtIcs"> .ics <small>(Google / Apple / Outlook)</small></label>
+      <label><input type="checkbox" id="fmtGcsv"> Google Calendar CSV</label>
+      <label><input type="checkbox" id="fmtMd"> Markdown <small>(for AI)</small></label>
+      <label><input type="checkbox" id="fmtJson"> JSON</label>
+      <label><input type="checkbox" id="fmtCsv"> CSV <small>(Excel)</small></label>
+      <div class="note">2 or more formats → one .zip. You choose the fields to keep after scraping.</div>
+    </fieldset>
+  </section>
   <button id="go" disabled>Scrape this course</button>
   <button id="cancel" class="hidden">Cancel</button>
   <div id="hint" class="hidden"></div>
   <div id="status"></div>
   <progress id="bar" class="hidden" value="0" max="1"></progress>
-  <div id="save" class="hidden">👉 Switch to the Moodle tab and click <b>💾 Save ZIP…</b> (bottom-right) to choose the folder.</div>
+  <div id="save" class="hidden"></div>
   <div id="warn" class="hidden"></div>
   <ul id="errors"></ul>
   <script src="popup.js"></script>

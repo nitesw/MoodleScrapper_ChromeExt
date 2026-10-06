@@ -37,6 +37,27 @@ After editing any file, click the ↻ reload icon on the extension card **and re
 - The section tree in order. Sections are `##`, nested subsections are `###` and deeper, and each activity is one level below its section. Each activity lists its type, link, breadcrumb, completion ("To do" / "Done" plus the raw text), dates, restrictions, description, content, and files as relative links into `files/`.
 - A **Scrape errors** list.
 
+## Schedule export (horaire.vinci.be)
+The same extension also exports your timetable from https://horaire.vinci.be (CELCAT Calendar). No login is needed for groups. To see student views, log in first.
+
+1. Open the schedule and pick your group, course or room in the **Resource(s)** box until the calendar fills.
+2. Click the extension icon. The popup shows what is selected (e.g. `📅 1BIN5 (Groups)`).
+3. Choose a **Date range**: *Current view* (the dates on screen), *This week*, *This month*, *Whole academic year* (1 Sep → 31 Aug) or *Custom* (from/until).
+4. Tick one or more **Export formats**:
+   - `.ics`: imports into Google, Apple and Outlook.
+   - **Google Calendar CSV**.
+   - **Markdown**: written for AI.
+   - **JSON**.
+   - **CSV**: opens in Excel.
+
+   Two or more formats are bundled into one `.zip`, which also holds a `README.txt` with the import steps.
+5. Click **Export schedule**. The extension first fetches the event list, then the details of each event (room, staff, notes, Teams link) at about 3 requests per second. A full year takes about a minute.
+6. A panel appears in the bottom-right of the schedule page. Choose **which fields to keep**, the **event title** style (`Math 1 : théorie`, `BINV1090-A-a Math 1 : théorie`, or as shown on CELCAT) and the formats. A live preview shows the first event. Click **💾 Save…**. Your choices are remembered.
+
+**Importing into Google Calendar:** create a dedicated calendar (e.g. "Vinci"), then go to Settings → Import & export → Import and pick the `.ics` file. Each event keeps its CELCAT id as its UID, so **re-importing won't create duplicates**. Calendar apps may still keep the old time or room of events already imported, and they never remove cancelled classes. When the schedule changes, delete the dedicated calendar and import again.
+
+**Network:** the schedule export sends POST requests only to the two read-only endpoints the CELCAT page itself uses (`/Home/GetCalendarData`, `/Home/GetSideBarEvent`). `post()` in `schedule.js` refuses any other path. The Moodle side stays GET-only.
+
 ## Office files → Markdown (for AI)
 Every downloaded `.pptx`, `.docx`, `.xlsx` (and `.odp`, `.odt`, `.ods`) is **kept as is**, and a Markdown version is added next to it:
 ```
@@ -161,12 +182,14 @@ MOODLE_TEST_VERBOSE=1 bun test   # show the scraper's console output
   - portable paths.
 - **`tests/popup.test.js`** drives the real popup: remembered checkboxes, the options sent with start, Cancel, restored progress.
 - **`tests/office2md.test.js`** tests the Office converter on generated PPTX/DOCX/XLSX/ODP/ODT files (`tests/office.fixtures.js`): slide order, bullets vs plain text, code blocks, equations, notes, narration, French Word styles, lists, Excel formulas including shared ones, ODF, and damaged or legacy files.
+- **`tests/schedule.test.js`** runs `schedule.js` against real-shaped CELCAT responses (`tests/schedule.fixtures.js`). It covers description and sidebar parsing, the selection read from the page or the URL, each exporter (ICS escaping, line folding, TZID, UIDs, Google CSV dates), chunking, throttling, cancel, session expiry, the field panel and saving.
 - **`tests/static.test.js`** checks the manifest, the bundled JSZip, and that there's a single GET-only `fetch`.
 - **`tests/samples.test.js`** runs `SELECTORS` against your real pages. Save `copy(document.querySelector('#region-main').outerHTML)` from a course page as `sample-course.html` in the project root and the test runs; otherwise it is skipped.
 
 ## Files
 - `manifest.json`: MV3 manifest (`activeTab`, `scripting`, host `https://moodle.vinci.be/*`).
 - `popup.html`, `popup.js`: the button, progress display and error list. They inject `lib/jszip.min.js` and `content.js` into the tab.
+- `schedule.js`: the horaire.vinci.be export (CELCAT reading, the field panel, and the ICS/CSV/Markdown/JSON exporters).
 - `content.js`: all the scraping and the Save ZIP button. `SELECTORS` and `LABELS` are at the top.
 - `package.json`, `tests/`: Bun test suite (dev only, not part of the extension).
 - `lib/jszip.min.js`: JSZip 3.10.1 (MIT), bundled locally.

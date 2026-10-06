@@ -127,3 +127,74 @@ describe('popup', () => {
     expect(p.$('hint').classList.contains('hidden')).toBe(false);
   });
 });
+
+describe('popup — schedule mode (horaire.vinci.be)', () => {
+  let p;
+  afterEach(() => p && p.close());
+  const SCHED_URL = 'https://horaire.vinci.be/cal?vt=agendaWeek&dt=2026-10-06&et=group&fid0=1BIN5';
+  const SEL = { resType: 103, typeName: 'Groups', resources: [{ id: '1BIN5', name: '1BIN5' }], view: 'agendaWeek', date: '2026-10-06', viewRange: { start: '2026-10-05', end: '2026-10-10' } };
+  const IDLE = { running: false, done: 0, total: 0, message: '', errors: [], warnings: [] };
+  const replyWith = (selection) => (msg) => (msg.cmd === 'selection' ? { selection, state: IDLE } : { ...IDLE, running: true, message: 'Reading the schedule…' });
+
+  test('shows the schedule UI, injects schedule.js and shows the page selection', async () => {
+    p = openPopup({ tabUrl: SCHED_URL, status: replyWith(SEL) });
+    await tick();
+    expect(p.$('scheduleUI').classList.contains('hidden')).toBe(false);
+    expect(p.$('moodleUI').classList.contains('hidden')).toBe(true);
+    expect(p.injected[0].files).toEqual(['lib/jszip.min.js', 'schedule.js']);
+    expect(p.sent[0]).toEqual({ cmd: 'selection' });
+    expect(p.$('selInfo').textContent).toBe('📅 1BIN5 (Groups)');
+    expect(p.$('viewRange').textContent).toBe('(2026-10-05 → 2026-10-10)');
+    expect(p.$('go').textContent).toBe('Export schedule');
+    expect(p.$('go').disabled).toBe(false);
+    expect(p.$('fmtIcs').checked).toBe(true); // default format
+  });
+
+  test('start sends the range, selection and formats; choices are remembered', async () => {
+    p = openPopup({ tabUrl: SCHED_URL, status: replyWith(SEL) });
+    await tick();
+    p.$('dateFrom').value = '2026-10-01';
+    p.$('dateTo').value = '2026-12-20';
+    p.$('dateTo').dispatchEvent(new p.w.Event('change', { bubbles: true })); // editing a date selects "Custom"
+    p.$('fmtMd').click();
+    p.$('go').click();
+    await tick();
+    expect(p.sent.at(-1)).toEqual({
+      cmd: 'start',
+      options: { start: '2026-10-01', end: '2026-12-20', resType: 103, federationIds: ['1BIN5'], formats: ['ics', 'md'] },
+    });
+    expect(JSON.parse(p.store.scheduleScraperOptions)).toEqual({ range: 'custom', from: '2026-10-01', to: '2026-12-20', formats: ['ics', 'md'] });
+  });
+
+  test('"Current view" uses the dates rendered on the page', async () => {
+    p = openPopup({ tabUrl: SCHED_URL, status: replyWith(SEL), store: { scheduleScraperOptions: JSON.stringify({ range: 'view', formats: ['json'] }) } });
+    await tick();
+    p.$('go').click();
+    await tick();
+    expect(p.sent.at(-1).options).toMatchObject({ start: '2026-10-05', end: '2026-10-10', formats: ['json'] });
+  });
+
+  test('nothing selected on the page, or no format ticked → button disabled with a hint', async () => {
+    p = openPopup({ tabUrl: SCHED_URL, status: replyWith({ ...SEL, resources: [], resType: null }) });
+    await tick();
+    expect(p.$('go').disabled).toBe(true);
+    expect(p.$('hint').textContent).toContain('Pick a group/course');
+    p.close();
+    p = openPopup({ tabUrl: SCHED_URL, status: replyWith(SEL) });
+    await tick();
+    p.$('fmtIcs').click();
+    expect(p.$('go').disabled).toBe(true);
+    expect(p.$('hint').textContent).toContain('at least one export format');
+  });
+
+  test('computeRange: week (Monday-first), month, academic year, invalid custom', async () => {
+    p = openPopup({ tabUrl: SCHED_URL, status: replyWith(SEL) });
+    await tick();
+    const d = new p.w.Date(2026, 9, 11); // Sunday 11 Oct 2026
+    expect(p.w.computeRange('week', d)).toEqual({ start: '2026-10-05', end: '2026-10-11' });
+    expect(p.w.computeRange('month', d)).toEqual({ start: '2026-10-01', end: '2026-10-31' });
+    expect(p.w.computeRange('year', d)).toEqual({ start: '2026-09-01', end: '2027-08-31' });
+    expect(p.w.computeRange('year', new p.w.Date(2027, 2, 1))).toEqual({ start: '2026-09-01', end: '2027-08-31' });
+    expect(p.w.computeRange('custom', d, null, { from: '2026-12-01', to: '2026-11-01' })).toBe(null);
+  });
+});
